@@ -205,23 +205,28 @@ def process_command():
         user_command = data_obj['result']['resolvedQuery']
     user_command = user_command.lower()
     debug_print("user_command: " + user_command)
-    if "home sensei" in user_command:
-        return get_response("Welcome to Home Sensei, how may I assist")
+    command_name = ""
     if "arm risco partially" in user_command:
+        command_name = "arm risco partially"
         riscoArmThread = Thread(target=riscoAction, args=[RiscoAction.PARTIALLY_ARMED])
         riscoArmThread.start()
     elif "disarm risco" in user_command:
+        command_name = "disarm risco"
         riscoArmThread = Thread(target=riscoAction, args=[RiscoAction.DISARMED])
         riscoArmThread.start()
     elif "arm risco" in user_command:
+        command_name = "arm risco"
         riscoArmThread = Thread(target=riscoAction, args=[RiscoAction.ARMED])
         riscoArmThread.start()
     elif "risco state" in user_command or "risco status" in user_command:
+        command_name = "risco state"
         riscoArmThread = Thread(target=notifyRiscoState)
         riscoArmThread.start()
+    elif "home sensei" in user_command:
+        return get_response("Welcome to Home Sensei, how may I assist")
     else:
         return get_response("I do not recognize the command: " + user_command)
-    return get_response("Command " + user_command + " is being processed")
+    return get_response("Command " + command_name + " is being processed")
 
 
 def start_webserver():
