@@ -9,7 +9,7 @@ import time
 import json
 import httplib2
 import urllib2
-from threading import Thread
+from threading import Thread, Timer
 from flask import Flask, render_template, request, Response, make_response
 import pyttsx
 from OpenSSL import SSL
@@ -46,7 +46,7 @@ if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 
 speak_volume = 0.8
 # Flask
 debug = False
-port = 80
+port = 28080
 key_file = config.get('ssl', 'key_file')
 cert_file = config.get('ssl', 'cert_file')
 # DDNS
@@ -57,6 +57,10 @@ ddns_password = config.get('ddns', 'password')
 risco_username = config.get('risco', 'username')
 risco_password = config.get('risco', 'password')
 risco_code = config.get('risco', 'code')
+# update_interval
+upnp_update_interval = 3600.0
+ddns_update_interval = 4000.0
+certificate_renewal_interval = 1000000.0
 
 
 if ddns_hostname == "":
@@ -64,10 +68,7 @@ if ddns_hostname == "":
     print("You clearly have not set the configuration file [" + config_file_name + "]")
     exit(1)
 
-
 app = Flask(__name__)
-context = (cert_file, key_file)
-
 
 def debug_print(msg):
     if debug:
@@ -181,19 +182,6 @@ def notifyRiscoState():
     #sendNotification()
 
 
-# Must change port to 80 when using certbot
-@app.route('/.well-known/acme-challenge/<path:path>', methods=['GET', 'POST'])
-def certbot_answer(path):
-    only_files = [f for f in os.listdir(".well-known/acme-challenge/") if os.path.isfile(os.path.join(".well-known/acme-challenge/", f))]
-    debug_print(str(only_files))
-    for file in only_files:
-        with open(os.path.join(".well-known/acme-challenge/", file), 'r') as fin:
-            debug_print(str(file))
-            file_content = fin.read()
-            debug_print(file_content)
-            return Response(file_content)
-
-
 @app.route('/webhook', methods=['GET', 'POST'])
 def process_command():
     debug_print("request: " + request.data)
@@ -230,11 +218,12 @@ def process_command():
 
 
 def start_webserver():
-    global context
+    global app
+    context = (cert_file, key_file)
     app.run(host='0.0.0.0', port=port, debug=debug, ssl_context=context)
-    #app.run(host='0.0.0.0', port=port, debug=debug)
 
-if __name__ == "__main__":
+
+def ddns_update():
     h = httplib2.Http(".cache")
     resp, external_ip = h.request("http://ipecho.net/plain")
     h.add_credentials(ddns_username, ddns_password)
@@ -243,13 +232,33 @@ if __name__ == "__main__":
     resp, content = h.request(update_noip_dns_url)
     debug_print(resp)
     debug_print(content)
-    debug_print("Strting flask server")
+    ddns_timer = Timer(ddns_update_interval, ddns_update)
+    ddns_timer.setDaemon(True)
+    ddns_timer.start()
+
+
+def upnp_update():
     upnpc_cmd = "upnpc -e 'Sensei' -r " + str(port) + " TCP"
     debug_print("upnp command [" + upnpc_cmd + "]")
-    os.system(upnpc_cmd)
+    os.system(upnpc_cmd) 
+    upnp_timer = Timer(upnp_update_interval, upnp_update)
+    upnp_timer.setDaemon(True)
+    upnp_timer.start()
+
+
+def certificate_renewal():
+    os.system("sudo ./certbot-auto renew --redirect --dry-run")
+    certificate_renewal_timer = Timer(certificate_renewal_interval, certificate_renewal)
+    certificate_renewal_timer.setDaemon(True)
+    certificate_renewal_timer.start()
+
+
+if __name__ == "__main__":
+    upnp_update()
+    ddns_update()
+    #certificate_renewal()
+    debug_print("Strting flask server")
     #webserver_thread = Thread(target=start_webserver)
     #webserver_thread.start()
     start_webserver()
 
-while True:
-    time.sleep(10)
