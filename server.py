@@ -60,7 +60,7 @@ risco_code = config.get('risco', 'code')
 # update_interval
 upnp_update_interval = 3600.0
 ddns_update_interval = 4000.0
-certificate_renewal_interval = 1000000.0
+certificate_renewal_interval = 259200  # 3 days
 
 
 if ddns_hostname == "":
@@ -247,7 +247,9 @@ def upnp_update():
 
 
 def certificate_renewal():
-    os.system("sudo ./certbot-auto renew --redirect --dry-run")
+    # get next renewal time from config file
+    # if the renewal time has come, renew the certificate
+    os.system("sudo python2.7 certificate_renewal.py")
     certificate_renewal_timer = Timer(certificate_renewal_interval, certificate_renewal)
     certificate_renewal_timer.setDaemon(True)
     certificate_renewal_timer.start()
