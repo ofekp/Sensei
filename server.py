@@ -17,11 +17,15 @@ import os
 import base64
 from enum import Enum
 import ConfigParser
+from subprocess import Popen, PIPE, check_output
+import pwd
 
 
 # config parser
 config_file_name = "home_sensei.cfg"
 config = ConfigParser.RawConfigParser()
+
+alarm_process = None
 
 
 if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 0 or config.read(config_file_name) == []:
@@ -41,7 +45,10 @@ if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 
     print("Please fill configuration file [" + config_file_name + "]")
     exit(1)
 
-
+# system
+pi_username = "pi"
+pi_uid = 1000
+pi_gid = 1000
 # BT Speaker
 speak_volume = 0.8
 # Flask
@@ -64,7 +71,6 @@ certificate_renewal_interval = 259200  # 3 days
 
 
 if ddns_hostname == "":
-    print(str(config.read(config_file_name)))
     print("You clearly have not set the configuration file [" + config_file_name + "]")
     exit(1)
 
@@ -119,7 +125,7 @@ def get_response(command):
 
 
 def riscoLogin():
-    h = httplib2.Http(".cache")
+    h = httplib2.Http()
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     headers['Content-Length'] = '0'
     login_url = "https://www.riscocloud.com/ELAS/WebUI/?username=" + risco_username + "&password=" + risco_password + "&code=" + risco_code + "&langId=en"
@@ -141,6 +147,7 @@ class RiscoAction(Enum):
 
 
 def riscoAction(riscoAction):
+    h = httplib2.Http()
     headers = riscoLogin()
     headers['Referer'] = 'https://www.riscocloud.com/'
     headers['Content-Type'] = 'text/html'
@@ -171,6 +178,7 @@ def riscoAction(riscoAction):
  
 
 def notifyRiscoState():
+    h = httplib2.Http()
     headers = riscoLogin()
     headers['Referer'] = 'https://www.riscocloud.com/'
     headers['Content-Type'] = 'application/x-www-form-urlencoded'
@@ -184,6 +192,9 @@ def notifyRiscoState():
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def process_command():
+    global alarm_process
+    global env
+
     debug_print("request: " + request.data)
     data_obj = json.loads(request.data)
     debug_print(json.dumps(data_obj, indent=4))
@@ -210,8 +221,27 @@ def process_command():
         command_name = "risco state"
         riscoArmThread = Thread(target=notifyRiscoState)
         riscoArmThread.start()
+    elif "set alarm" in user_command or "set an alarm" in user_command:
+        # currently only supporting "07:30:00" format (7:30 am)
+        command_name = "set alarm"
+        date_time = data_obj['result']['parameters']['date-time']
+        mhs = date_time.split(":")
+        #alarm_process = Popen(['python2.7', 'alarmclock.py', '07', '32'], preexec_fn=demote(sys_uid, sys_gid), env=env, cwd=cwd, stdin=PIPE, stdout=PIPE)
+        #print alarm_process.stdout.read()
+        os.system("su - pi -c \"python2.7 /home/pi/ofek/Sensei/alarmclock.py " + mhs[0] + " " + mhs[1] + " &\"")
+    elif "cancel alarm" in user_command or "stop alarm" in user_command:
+        command_name = "cancel alarm"
+        pid = check_output(['pgrep', '-f', 'alarmclock.py'])
+        os.system("sudo kill -9 " + pid)
+        #if alarm_process != None:
+        #    alarm_process.stdin.write('q/n')
+        #alarm_process = None
+    elif "snooze" in user_command:
+        command_name = "snooze"
+        date_time = data_obj['result']['parameters']['date-time']
+        print(date_time)
     elif "home sensei" in user_command:
-        return get_response("Welcome to Home Sensei, how may I assist")
+        return get_response("Home Sensei here")
     else:
         return get_response("I do not recognize the command: " + user_command)
     return get_response("Command " + command_name + " is being processed")
@@ -224,7 +254,7 @@ def start_webserver():
 
 
 def ddns_update():
-    h = httplib2.Http(".cache")
+    h = httplib2.Http()
     resp, external_ip = h.request("http://ipecho.net/plain")
     h.add_credentials(ddns_username, ddns_password)
     update_noip_dns_url = "http://dynupdate.no-ip.com/nic/update?hostname=" + ddns_hostname + "&myip=" + external_ip

@@ -10,7 +10,6 @@ from subprocess import Popen, PIPE, check_output
 import thread
 import pyttsx
 
-
 user_cmd = ""
 speak_volume = 1.0
 
