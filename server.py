@@ -226,20 +226,32 @@ def process_command():
         command_name = "set alarm"
         date_time = data_obj['result']['parameters']['date-time']
         mhs = date_time.split(":")
-        #alarm_process = Popen(['python2.7', 'alarmclock.py', '07', '32'], preexec_fn=demote(sys_uid, sys_gid), env=env, cwd=cwd, stdin=PIPE, stdout=PIPE)
-        #print alarm_process.stdout.read()
         os.system("su - pi -c \"python2.7 /home/pi/ofek/Sensei/alarmclock.py " + mhs[0] + " " + mhs[1] + " &\"")
     elif "cancel alarm" in user_command or "stop alarm" in user_command:
         command_name = "cancel alarm"
         pid = check_output(['pgrep', '-f', 'alarmclock.py'])
         os.system("sudo kill -9 " + pid)
-        #if alarm_process != None:
-        #    alarm_process.stdin.write('q/n')
-        #alarm_process = None
     elif "snooze" in user_command:
         command_name = "snooze"
         date_time = data_obj['result']['parameters']['date-time']
         print(date_time)
+    elif "stop streaming" in user_command or "stop stream" in user_command:
+        command_name = "stop streaming"
+        pid = check_output(['pgrep', '-f', 'mplayer'])
+        os.system("sudo kill -9 " + pid)
+    elif "stream" in user_command:
+        command_name = "stream"
+        # load radio stations map
+        found_station = False
+        with open('radiostations.json', 'r') as rsf:
+            rso = json.load(rsf)
+            for rs in rso:
+                if rs in user_command:
+                    user_command += " " + rs + " station"
+                    found_station = True
+                    os.system("su - pi -c \"mplayer -ao pulse '" + rso[rs] + "' &\"")
+        if not found_station:
+            return get_response("I am not familiarized with the requested radio station")
     elif "home sensei" in user_command:
         return get_response("Home Sensei here")
     else:
