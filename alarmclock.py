@@ -12,6 +12,7 @@ import pyttsx
 
 user_cmd = ""
 speak_volume = 1.0
+mplayer_control_file = "/tmp/mplayercontrol"
 
 def speakTime(engine, hour, minute):
     ampm = ""
@@ -101,7 +102,7 @@ while int(time.strftime("%M")) < cminute:
 #os.system("omxplayer -o local 'http://broadcast.infomaniak.net/onefm-high.mp3'")
 #os.system("mplayer -ao pulse 'http://broadcast.infomaniak.net/onefm-high.mp3'")
 stream_url = "http://broadcast.infomaniak.net/onefm-high.mp3"
-stream_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(stream_url)], stdin=PIPE, stdout=PIPE)
+stream_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '-slave', '-input', 'file=' + mplayer_control_file, '{0}'.format(stream_url)], stdin=PIPE, stdout=PIPE)
 time.sleep(5)
 thread.start_new_thread(speakCurrentTime, ())
 thread.start_new_thread(get_user_input, ())

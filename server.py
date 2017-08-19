@@ -25,8 +25,6 @@ import pwd
 config_file_name = "home_sensei.cfg"
 config = ConfigParser.RawConfigParser()
 
-alarm_process = None
-
 
 if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 0 or config.read(config_file_name) == []:
     debug_print("Writing empty config file")
@@ -68,11 +66,15 @@ risco_code = config.get('risco', 'code')
 upnp_update_interval = 3600.0
 ddns_update_interval = 4000.0
 certificate_renewal_interval = 259200  # 3 days
-
+# mplayer
+mplayer_control_file = "/tmp/mplayercontrol"
 
 if ddns_hostname == "":
     print("You clearly have not set the configuration file [" + config_file_name + "]")
     exit(1)
+
+# make a temp file from which mplayer can receive commands
+os.system("su - pi \"mkfifo " + mplayer_control_file + "\"")
 
 app = Flask(__name__)
 
@@ -203,6 +205,7 @@ def process_command():
     except:
         user_command = data_obj['result']['resolvedQuery']
     user_command = user_command.lower()
+    user_command = user_command.replace("the", "").replace("  ", " ")
     debug_print("user_command: " + user_command)
     command_name = ""
     if "arm risco partially" in user_command:
@@ -229,16 +232,20 @@ def process_command():
         os.system("su - pi -c \"python2.7 /home/pi/ofek/Sensei/alarmclock.py " + mhs[0] + " " + mhs[1] + " &\"")
     elif "cancel alarm" in user_command or "stop alarm" in user_command:
         command_name = "cancel alarm"
-        pid = check_output(['pgrep', '-f', 'alarmclock.py'])
-        os.system("sudo kill -9 " + pid)
+        pids_str = check_output(['pgrep', '-f', 'alarmclock.py'])
+        pids = pids_str.strip().split('\n')
+        for pid in pids:
+            os.system("sudo kill -9 " + pid)
     elif "snooze" in user_command:
         command_name = "snooze"
         date_time = data_obj['result']['parameters']['date-time']
         print(date_time)
     elif "stop streaming" in user_command or "stop stream" in user_command:
         command_name = "stop streaming"
-        pid = check_output(['pgrep', '-f', 'mplayer'])
-        os.system("sudo kill -9 " + pid)
+        pids_str = check_output(['pgrep', '-f', 'mplayer'])
+        pids = pid_str.strip().split('\n')
+        for pid in pids:
+            os.system("sudo kill -9 " + pid)
     elif "stream" in user_command:
         command_name = "stream"
         # load radio stations map
@@ -249,9 +256,13 @@ def process_command():
                 if rs in user_command:
                     user_command += " " + rs + " station"
                     found_station = True
-                    os.system("su - pi -c \"mplayer -ao pulse '" + rso[rs] + "' &\"")
+                    os.system("su - pi -c \"mplayer -ao pulse -slave -input file=" + mplayer_control_file + " '" + rso[rs] + "' &\"")
+                    break
         if not found_station:
             return get_response("I am not familiarized with the requested radio station")
+    elif "set volume" in user_command:
+        percentage = data_obj['result']['parameters']['number']
+        os.system("echo \"volume " + percentage + " 1\" > " + mplayer_control_file)     
     elif "home sensei" in user_command:
         return get_response("Home Sensei here")
     else:
