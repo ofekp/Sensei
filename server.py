@@ -243,7 +243,7 @@ def process_command():
     elif "stop streaming" in user_command or "stop stream" in user_command:
         command_name = "stop streaming"
         pids_str = check_output(['pgrep', '-f', 'mplayer'])
-        pids = pid_str.strip().split('\n')
+        pids = pids_str.strip().split('\n')
         for pid in pids:
             os.system("sudo kill -9 " + pid)
     elif "stream" in user_command:
