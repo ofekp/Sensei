@@ -50,5 +50,6 @@ if __name__ == "__main__":
     start_webserver_thread.setDaemon(True)
     start_webserver_thread.start()
     time.sleep(20)
-    os.system("sudo ./certbot-auto renew --dry-run")
+    #os.system("sudo ./certbot-auto renew --dry-run")
+    os.system("sudo ./certbot-auto renew")
 

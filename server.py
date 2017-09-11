@@ -192,21 +192,27 @@ def notifyRiscoState():
     #sendNotification()
 
 
-@app.route('/webhook', methods=['GET', 'POST'])
-def process_command():
-    global alarm_process
-    global env
-
-    debug_print("request: " + request.data)
-    data_obj = json.loads(request.data)
-    debug_print(json.dumps(data_obj, indent=4))
+def close_process(process_name):
     try:
-        user_command = data_obj['originalRequest']['data']['inputs'][0]['rawInputs'][0]['query']
-    except:
-        user_command = data_obj['result']['resolvedQuery']
-    user_command = user_command.lower()
-    user_command = user_command.replace("the", "").replace("  ", " ")
-    debug_print("user_command: " + user_command)
+        pids_str = check_output(['pgrep', '-f', process_name])
+        pids = pids_str.strip().split('\n')
+        for pid in pids:
+            os.system("sudo kill -9 " + pid)
+        return True
+    except Exception as e:
+        return False
+
+
+def check_process_running(process_name):
+    try:
+        pids_str = check_output(['pgrep', '-f', process_name])
+        pids = pids_str.strip().split('\n')
+        return len(pids) > 0
+    except Exception as e:
+        return False
+
+
+def handle_user_command(user_command, data_obj):
     command_name = ""
     if "arm risco partially" in user_command:
         command_name = "arm risco partially"
@@ -232,20 +238,18 @@ def process_command():
         os.system("su - pi -c \"python2.7 /home/pi/ofek/Sensei/alarmclock.py " + mhs[0] + " " + mhs[1] + " &\"")
     elif "cancel alarm" in user_command or "stop alarm" in user_command:
         command_name = "cancel alarm"
-        pids_str = check_output(['pgrep', '-f', 'alarmclock.py'])
-        pids = pids_str.strip().split('\n')
-        for pid in pids:
-            os.system("sudo kill -9 " + pid)
+        close_process("alarmclock.py")
+        close_process("mplayer")
     elif "snooze" in user_command:
         command_name = "snooze"
         date_time = data_obj['result']['parameters']['date-time']
         print(date_time)
-    elif "stop streaming" in user_command or "stop stream" in user_command:
+    elif "stop stream" in user_command:
         command_name = "stop streaming"
-        pids_str = check_output(['pgrep', '-f', 'mplayer'])
-        pids = pids_str.strip().split('\n')
-        for pid in pids:
-            os.system("sudo kill -9 " + pid)
+        close_process("mplayer")
+    elif "stop stream" in user_command:
+        command_name = "stop streaming"
+        close_process("mplayer")
     elif "stream" in user_command:
         command_name = "stream"
         # load radio stations map
@@ -259,15 +263,49 @@ def process_command():
                     os.system("su - pi -c \"mplayer -ao pulse -slave -input file=" + mplayer_control_file + " '" + rso[rs] + "' &\"")
                     break
         if not found_station:
-            return get_response("I am not familiarized with the requested radio station")
+            return "I am not familiarized with the requested radio station"
     elif "set volume" in user_command:
-        percentage = data_obj['result']['parameters']['number']
-        os.system("echo \"volume " + percentage + " 1\" > " + mplayer_control_file)     
+        if not check_process_running("mplayer"):
+            return "No stream is being played now"
+        percentage = data_obj['result']['parameters']['percentage']
+        os.system("echo \"volume " + percentage + " 1\" > " + mplayer_control_file)
     elif "home sensei" in user_command:
-        return get_response("Home Sensei here")
+        return "Home Sensei here"
     else:
-        return get_response("I do not recognize the command: " + user_command)
-    return get_response("Command " + command_name + " is being processed")
+        return "I do not recognize the command: " + user_command
+    return "Command " + command_name + " is being processed"
+
+
+
+@app.route('/webhook', methods=['GET', 'POST'])
+def process_command():
+    debug_print("request: " + request.data)
+    data_obj = json.loads(request.data)
+    debug_print(json.dumps(data_obj, indent=4))
+    try:
+        user_speech = data_obj['originalRequest']['data']['inputs'][0]['rawInputs'][0]['query']
+    except:
+        user_speech = data_obj['result']['resolvedQuery']
+    user_speech = user_speech.lower()
+    user_speech = user_speech.replace("the", "").replace("  ", " ")
+    debug_print("user_speech [" + user_speech + "]")
+    
+    # combo commands
+    if "combo" in user_speech:
+        if "sleep" in user_speech:
+            user_commands = ["arm risco partially", "set alarm to 7:00"]
+            data_obj['result']['parameters']['date-time'] = "7:00"
+        else:
+            return get_response("I do not recognize the combo command: " + user_command)
+    else:
+        user_commands = [user_speech]
+
+    debug_print("user_commands " + str(user_commands))
+    
+    response = ""
+    for user_command in user_commands:
+        response += handle_user_command(user_command, data_obj) + ". "
+    return get_response(response)
 
 
 def start_webserver():
