@@ -17,6 +17,8 @@ speak_volume = 2.0
 min_mplayer_volume = "40"
 max_mplayer_volume = "70"
 mplayer_control_file = "/tmp/mplayercontrol"
+radio_stations_file = "/home/pi/ofek/Sensei/radiostations.json"
+
 
 def speakTime(engine, hour, minute):
     ampm = ""
@@ -86,7 +88,7 @@ def get_user_input():
         print("User cmd received: " + user_cmd)
     
 os.system("mkfifo " + mplayer_control_file)
-with open('radiostations.json', 'r') as rsf:
+with open(radio_stations_file, 'r') as rsf:
     rso = json.load(rsf)
     stream_url = rso[radio_station_name]
 print("Stream [" + stream_url + "]")
