@@ -9,9 +9,13 @@ import time
 from subprocess import Popen, PIPE, check_output
 import thread
 import pyttsx
+import json
 
+radio_station_name = "977 hits"
 user_cmd = ""
-speak_volume = 1.0
+speak_volume = 2.0
+min_mplayer_volume = "40"
+max_mplayer_volume = "70"
 mplayer_control_file = "/tmp/mplayercontrol"
 
 def speakTime(engine, hour, minute):
@@ -35,7 +39,7 @@ def speakTime(engine, hour, minute):
 
 
 def speakCurrentTime():
-    global stream_play_pipe
+    #global stream_play_pipe
     global user_cmd
 
     while True:
@@ -44,19 +48,20 @@ def speakCurrentTime():
             engine.setProperty('rate', 150)  # by default the rate is 200
             engine.setProperty('volume', speak_volume)
     
-            time.sleep(2)
-            for i in range(20):
-                stream_play_pipe.stdin.write('/')
-                time.sleep(0.02)
+            #for i in range(20):
+            #    stream_play_pipe.stdin.write('/')
+            #    time.sleep(0.02)
         
+            os.system("echo \"volume " + min_mplayer_volume + " 1\" > " + mplayer_control_file)
+            time.sleep(1.2)
             engine.say('The current time is ')
             speakTime(engine, int(time.strftime("%H")), int(time.strftime("%M")))
             engine.runAndWait()
-            time.sleep(2)    
-
-            for i in range(25):
-                stream_play_pipe.stdin.write('*')
-                time.sleep(0.02)
+            time.sleep(1.2)    
+            os.system("echo \"volume " + max_mplayer_volume + " 1\" > " + mplayer_control_file)
+            #for i in range(25):
+            #    stream_play_pipe.stdin.write('*')
+            #    time.sleep(0.02)
     
             del engine
 
@@ -65,8 +70,9 @@ def speakCurrentTime():
                 if user_cmd == "q":
                     quit()
                 time.sleep(1)
-        except Exception as e:
-            print "pyttsx exception({0}) occurred: {1}".format(e.errno, e.strerror) 
+        except Exception, e:
+            print "pyttsx exception occurred: {0}".format(str(e))
+            pass 
         except:
             print "Unexpected error: ", sys.exc_info()[0]
             pass
@@ -79,7 +85,11 @@ def get_user_input():
         user_cmd = raw_input("Enter cmd: ")
         print("User cmd received: " + user_cmd)
     
-
+os.system("mkfifo " + mplayer_control_file)
+with open('radiostations.json', 'r') as rsf:
+    rso = json.load(rsf)
+    stream_url = rso[radio_station_name]
+print("Stream [" + stream_url + "]")
 chour = int(sys.argv[1])
 cminute = int(sys.argv[2])
 engine = pyttsx.init()
@@ -101,8 +111,10 @@ while int(time.strftime("%M")) < cminute:
 # start alarm
 #os.system("omxplayer -o local 'http://broadcast.infomaniak.net/onefm-high.mp3'")
 #os.system("mplayer -ao pulse 'http://broadcast.infomaniak.net/onefm-high.mp3'")
-stream_url = "http://broadcast.infomaniak.net/onefm-high.mp3"
-stream_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '-slave', '-input', 'file=' + mplayer_control_file, '{0}'.format(stream_url)], stdin=PIPE, stdout=PIPE)
+#stream_url = "http://broadcast.infomaniak.net/onefm-high.mp3"
+#stream_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '-slave', '-input', 'file={0}'.format(mplayer_control_file), '{0}'.format(stream_url)], stdin=PIPE, stdout=PIPE)
+#os.system("mplayer -ao pulse -slave -input file=" + mplayer_control_file + " '" + stream_url + "'")
+os.system("mplayer -quiet -ao pulse -slave -input file='" + mplayer_control_file + "' '" + stream_url + "' &")
 time.sleep(5)
 thread.start_new_thread(speakCurrentTime, ())
 thread.start_new_thread(get_user_input, ())
@@ -110,4 +122,5 @@ thread.start_new_thread(get_user_input, ())
 while user_cmd != "q":
     time.sleep(2)
 
+os.system("sudo killall mplayer")
 print("Good Morning!!!")
