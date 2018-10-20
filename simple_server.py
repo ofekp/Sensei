@@ -1,4 +1,6 @@
 #!/usr/bin/python2.7
+# dependencies
+# httplib2, pyttsx + install miniupnpc
 # usage: "sudo python2.7 simple_server.py"
 
 import time
@@ -16,11 +18,32 @@ from enum import Enum
 import ConfigParser
 from subprocess import Popen, PIPE, check_output
 import pwd
-from bluetoothctl import Bluetoothctl
 
 # config parser
 config_file_name = "home_sensei.cfg"
 config = ConfigParser.RawConfigParser()
+
+# debug
+debug = True
+
+
+def debug_print(msg):
+    if debug:
+        print(msg)
+
+
+def say_something(something):
+    engine = pyttsx.init()
+    engine.setProperty('rate', 150)  # by default the rate is 200
+    engine.setProperty('volume', speak_volume)
+    engine.say(something)
+    engine.runAndWait()
+    del engine
+
+
+def save_global_config(config_obj):
+    with open(config_file_name, 'wb') as config_file:
+        config_obj.write(config_file)
 
 
 if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 0 or config.read(config_file_name) == []:
@@ -40,6 +63,7 @@ if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 
     print("Please fill configuration file [" + config_file_name + "]")
     exit(1)
 
+
 # system
 pi_username = "pi"
 pi_uid = 1000
@@ -47,7 +71,6 @@ pi_gid = 1000
 # BT Speaker
 speak_volume = 0.8
 # Flask
-debug = True
 port = 28080
 key_file = config.get('ssl', 'key_file')
 cert_file = config.get('ssl', 'cert_file')
@@ -84,23 +107,6 @@ os.system("mkfifo " + mplayer_control_file)
 os.system("chmod 777 " + mplayer_control_file)
 
 app = Flask(__name__)
-
-def debug_print(msg):
-    if debug:
-        print(msg)
-
-
-def say_something(something):
-    engine = pyttsx.init()
-    engine.setProperty('rate', 150)  # by default the rate is 200
-    engine.setProperty('volume', speak_volume)
-    engine.say(something)
-    engine.runAndWait()
-    del engine
-
-def save_global_config(config_obj):
-    with open(config_file_name, 'wb') as config_file:
-        config_obj.write(config_file)
 
 
 # Send message to phone using GCM - for debug purposes
@@ -346,37 +352,6 @@ def certificate_renewal():
 
 
 if __name__ == "__main__":
-    # start pulseaudio and then connect to bluetooth speaker
-    os.system("su - pi \"pulseaudio -D\"")
-    bt = Bluetoothctl()
-    bt.start_scan()
-    if bt.is_connected():
-        print("BT is already connected")
-    else:
-        devices = bt.get_connectable_devices()
-        devMap = {}
-        devList = []
-        for dev in devices:
-            devMap[dev['name']] = dev['mac_address'];
-            devList.append(dev['name'])
-        if bt_speaker_name in devList:
-            bt_mac = devMap[bt_speaker_name]
-            logging.debug('trying to connect to [' + bt_device_name + ']')
-            bt.start_agent()
-            bt.default_agent()
-            bt.trust(bt_mac)
-            bt.pair(bt_mac)
-            result = bt.connect(bt_mac)
-            logging.debug("Connection result [" + str(result) + "]")
-            if result:
-                print('successful connection to [' + bt_device_name + ']')
-            else:
-                print("Could not connect to BR speaker [" + bt_speaker_name + "]")
-                exit(1) 
-        else:
-            print("could not find BT speaker [" + bt_speaker_name + "]")
-            # exit(1)          
-
     upnp_update()
     ddns_update()
     #certificate_renewal()
