@@ -129,16 +129,35 @@ def sendNotification(message):
 def riscoLogin():
     h = httplib2.Http()
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    headers['Content-Length'] = '0'
-    login_url = "https://www.riscocloud.com/ELAS/WebUI/?username=" + risco_username + "&password=" + risco_password + "&code=" + risco_code + "&langId=en"
-    if debug:
-        debug_print("login_url " + login_url)
-    resp, content = h.request(login_url, 'POST', headers=headers)
+    login_url = "https://www.riscocloud.com/ELAS/WebUI/"
+    debug_print("login_url " + login_url)
+    risco_username_base64 = base64.b64encode(risco_username)
+    body_str = "username=" + risco_username.replace('@', '%40') + "&password=" + risco_password + "&strRedirectToEventUID=&strRedirectToSiteId=&langId=en&langId=en"
+    headers['Content-Length'] = str(len(body_str))
+    resp, content = h.request(login_url, 'POST', headers=headers, body=body_str)
     debug_print("login resp: " + str(resp))
     # return headers with the set cookie
-    RUCCookie = 'username=' + base64.b64encode(risco_username) + '&langId=en&isForcedLangId=False'
+    RUCCookie = 'username=' + risco_username + '&langId=en&isForcedLangId=False'
     asp_session_id = resp['set-cookie'][resp['set-cookie'].find("ASP.NET_SessionId") + 18 : resp['set-cookie'].find(';')]
     debug_print("RUCCookie [" + RUCCookie + "] ASP Session ID [" + asp_session_id + "]")
+    
+    h = httplib2.Http()
+    headers = {'Cookie': 'RUCCookie=' + RUCCookie + '; ASP.NET_SessionId=' + asp_session_id}
+    headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
+    headers['Origin'] = 'https://www.riscocloud.com'
+    headers['Host'] = 'www.riscocloud.com'
+    headers['Referer'] = 'https://www.riscocloud.com/ELAS/WebUI/MainPage/MainPage'
+    headers['Accept'] = '*/*'
+    login_url = "https://www.riscocloud.com/ELAS/WebUI/SiteLogin"
+    body_str = "SelectedSiteId=322581&Pin=" + risco_code
+    headers['Content-Length'] = str(len(body_str))
+    resp, content = h.request(login_url, 'POST', headers=headers, body=body_str)
+    debug_print("site login resp: " + str(resp))
+    # return headers with the set cookie
+    #RUCCookie = 'username=' + risco_username_base64 + '&langId=en&isForcedLangId=False'
+    #asp_session_id = resp['set-cookie'][resp['set-cookie'].find("ASP.NET_SessionId") + 18 : resp['set-cookie'].find(';')]
+    debug_print("After SiteLogin RUCCookie [" + RUCCookie + "] ASP Session ID [" + asp_session_id + "]")
+
     return {'Cookie': 'RUCCookie=' + RUCCookie + '; ASP.NET_SessionId=' + asp_session_id}
 
 
@@ -151,10 +170,11 @@ class RiscoAction(Enum):
 def riscoAction(riscoAction):
     h = httplib2.Http()
     headers = riscoLogin()
-    headers['Referer'] = 'https://www.riscocloud.com/'
-    headers['Content-Type'] = 'text/html'
+    headers['Origin'] = 'https://www.riscocloud.com'
+    headers['Host'] = 'www.riscocloud.com'
+    headers['Referer'] = 'https://www.riscocloud.com/ELAS/WebUI/MainPage/MainPage'
+    headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8'
     headers['Accept'] = '*/*'
-    headers['Content-Length'] = '0'
     debug_print("request risco headers " + str(headers))
     debug_print("RiscoAction enum [" + str(riscoAction) + "]")
     if riscoAction == RiscoAction.ARMED:
@@ -166,7 +186,9 @@ def riscoAction(riscoAction):
     else:
         return False
     debug_print("riscoAction [" + riscoAction + "]")
-    resp, content = h.request("https://www.riscocloud.com/ELAS/WebUI/Security/ArmDisarm?type=0%3A" + riscoAction + "&passcode=" + risco_password + "&bypassZoneId=-1", 'POST', headers=headers)
+    body_str = "type=0%3A" + riscoAction + "&passcode=------&bypassZoneId=-1"
+    headers['Content-Length'] = str(len(body_str))
+    resp, content = h.request("https://www.riscocloud.com/ELAS/WebUI/Security/ArmDisarm", 'POST', body=body_str, headers=headers)
     debug_print("Risco server resp: " + str(content))
     if "ico-partial.png" in str(content):
         sendNotification("RISCO is set to [ARMED_PARTIALLY]") 
@@ -272,8 +294,20 @@ def start_webserver():
 
 def ddns_update():
     h = httplib2.Http()
-    resp, external_ip = h.request("http://ipecho.net/plain")
-    #resp, external_ip = h.request("http://myexternalip.com/raw");  # IPv6
+    my_addr_host = "http://ipecho.net/plain"
+    try:
+        resp, external_ip = h.request(my_addr_host)
+    except:
+        print("failed to get address from [" + my_addr_host + "]")
+        try:
+            my_addr_host = "http://myexternalip.com/raw"  # IPv6
+            resp, external_ip = h.request(my_addr_host)
+        except:
+            print("failed to get address from [" + my_addr_host + "]")
+            ddns_timer = Timer(ddns_update_interval_sec, ddns_update)
+            ddns_timer.setDaemon(True)
+            ddns_timer.start()
+            return
     print("My IP address is [" + external_ip.strip() + "]")
     #h.add_credentials(ddns_username, ddns_password)
     update_dynu_ddns_url = "https://api.dynu.com/nic/update?hostname=" + ddns_hostname + "&username=" + ddns_username + "&myip=" + external_ip.strip() + "&password=" + ddns_password
@@ -341,8 +375,8 @@ if __name__ == "__main__":
                 exit(1) 
         else:
             print("could not find BT speaker [" + bt_speaker_name + "]")
-            exit(1)
-          
+            # exit(1)          
+
     upnp_update()
     ddns_update()
     #certificate_renewal()
