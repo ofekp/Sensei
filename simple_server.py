@@ -1,21 +1,20 @@
 #!/usr/bin/python2.7
 # dependencies
-# httplib2, pyttsx + install miniupnpc
-# usage: "sudo python2.7 simple_server.py"
+# httplib2, pyttsx3, configparser + install miniupnpc + install rng-tools
+# usage: "sudo python3 simple_server.py"
 
 import time
 import json
 import httplib2
 import requests
-import urllib2
 from threading import Thread, Timer
 from flask import Flask, render_template, request, Response, make_response
-import pyttsx
+import pyttsx3 as pyttsx
 from OpenSSL import SSL
 import os
 import base64
 from enum import Enum
-import ConfigParser
+import configparser as ConfigParser
 from subprocess import Popen, PIPE, check_output
 import pwd
 
@@ -119,9 +118,11 @@ def sendNotification(message):
     headers = {'Content-Type': 'application/json', 'Authorization': 'key=' + app_key}
     data =  json.dumps(json_data)
 
-    req = urllib2.Request(url, data, headers)
-    f = urllib2.urlopen(req)
-    response = json.loads(f.read())
+    h = httplib2.Http()
+    response = h.request(url, 'POST', headers=headers, body=data)
+    #req = urllib2.Request(url, data, headers)
+    #f = urllib2.urlopen(req)
+    #response = json.loads(f.read())
 
     reply = {}
     if 'message_id' in response:
@@ -129,7 +130,7 @@ def sendNotification(message):
     elif 'error' in response:
         reply['error'] = '1'
 
-    f.close()
+    #f.close()
 
 
 def riscoLogin():
@@ -137,7 +138,7 @@ def riscoLogin():
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     login_url = "https://www.riscocloud.com/ELAS/WebUI/"
     debug_print("login_url " + login_url)
-    risco_username_base64 = base64.b64encode(risco_username)
+    risco_username_base64 = base64.b64encode(risco_username.encode('utf-8'))
     body_str = "username=" + risco_username.replace('@', '%40') + "&password=" + risco_password + "&strRedirectToEventUID=&strRedirectToSiteId=&langId=en&langId=en"
     headers['Content-Length'] = str(len(body_str))
     resp, content = h.request(login_url, 'POST', headers=headers, body=body_str)
@@ -223,7 +224,7 @@ def notifyRiscoState():
 def close_process(process_name):
     try:
         pids_str = check_output(['pgrep', '-f', process_name])
-        pids = pids_str.strip().split('\n')
+        pids = str(pids_str.strip()).split('\n')
         for pid in pids:
             os.system("sudo kill -9 " + pid)
         return True
@@ -234,7 +235,7 @@ def close_process(process_name):
 def check_process_running(process_name):
     try:
         pids_str = check_output(['pgrep', '-f', process_name])
-        pids = pids_str.strip().split('\n')
+        pids = str(pids_str.strip()).split('\n')
         return len(pids) > 0
     except Exception as e:
         return False
@@ -253,14 +254,14 @@ def handle_pi_command(pi_command, pi_command_params):
         command_name = "arm risco partially"
         riscoArmThread = Thread(target=riscoAction, args=[RiscoAction.PARTIALLY_ARMED])
         riscoArmThread.start()
-    print "Executing command [" + command_name + "]"
+    print("Executing command [" + command_name + "]")
     return command_name
 
 
 @app.route('/webhook', methods=['POST'])
 def process_command():
-    debug_print("request: " + request.data)
-    data_obj = json.loads(request.data)
+    debug_print("request: " + request.data.decode("utf-8"))
+    data_obj = json.loads(request.data.decode("utf-8"))
     debug_print(json.dumps(data_obj, indent=4))
     user_action = data_obj['action']
     user_action = user_action.lower()
@@ -314,13 +315,13 @@ def ddns_update():
             ddns_timer.setDaemon(True)
             ddns_timer.start()
             return
-    print("My IP address is [" + external_ip.strip() + "]")
+    print("My IP address is [" + str(external_ip).strip() + "]")
     #h.add_credentials(ddns_username, ddns_password)
-    update_dynu_ddns_url = "https://api.dynu.com/nic/update?hostname=" + ddns_hostname + "&username=" + ddns_username + "&myip=" + external_ip.strip() + "&password=" + ddns_password
+    update_dynu_ddns_url = "https://api.dynu.com/nic/update?hostname=" + ddns_hostname + "&username=" + ddns_username + "&myip=" + str(external_ip).strip() + "&password=" + ddns_password
     #update_noip_dns_url = "http://dynupdate.no-ip.com/nic/update?hostname=" + ddns_hostname + "&myip=" + external_ip.strip() + ""
     print("Update DYNU url [" + update_dynu_ddns_url + "]")
     resp = requests.get(update_dynu_ddns_url)
-    print("DDNS response [" + resp.content + "]")
+    print("DDNS response [" + str(resp.content) + "]")
     ddns_timer = Timer(ddns_update_interval_sec, ddns_update)
     ddns_timer.setDaemon(True)
     ddns_timer.start()
@@ -329,7 +330,7 @@ def ddns_update():
 def upnp_update():
     # first let's find the gateway router
     adjusted_update_interval = upnp_update_interval_sec
-    gateway_split = check_output(["ip", "route"]).split(" ")
+    gateway_split = str(check_output(["ip", "route"])).split(" ")
     if len(gateway_split) >= 2:
         gateway = gateway_split[2]
         upnpc_cmd = "upnpc -e 'Sensei' -r " + str(port) + " TCP -G " + str(gateway)
